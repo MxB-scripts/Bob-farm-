@@ -1,0 +1,160 @@
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local TweenService = game:GetService("TweenService") -- Добавили сервис для анимации блеска
+local player = game.Players.LocalPlayer
+
+-- ТВОИ КООРДИНАТЫ ПОРТАЛА:
+local portalPos = Vector3.new(-1214.33, 328.25, 4.26)
+
+_G.AutoFarm = false
+
+-- === ANTI AFK ===
+local virtualUser = game:GetService("VirtualUser")
+player.Idled:Connect(function()
+    virtualUser:CaptureController()
+    virtualUser:ClickButton2(Vector2.new())
+end)
+
+-- === UI ===
+local screenGui = Instance.new("ScreenGui", player.PlayerGui)
+screenGui.ResetOnSpawn = false
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 200, 0, 100)
+mainFrame.Position = UDim2.new(0.5, -100, 0.1, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 2
+mainFrame.Active = true
+mainFrame.Draggable = true 
+mainFrame.Parent = screenGui
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.9, 0, 0.4, 0)
+toggleBtn.Position = UDim2.new(0.05, 0, 0.1, 0)
+toggleBtn.Text = "START FARM"
+toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextScaled = true
+toggleBtn.Parent = mainFrame
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0.9, 0, 0.3, 0)
+statusLabel.Position = UDim2.new(0.05, 0, 0.55, 0)
+statusLabel.Text = "Status: OFF"
+statusLabel.TextColor3 = Color3.new(1, 1, 1)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Parent = mainFrame
+
+-- === CREDITS С БЛЕСКОМ ===
+local creditsLabel = Instance.new("TextLabel")
+creditsLabel.Size = UDim2.new(0.95, 0, 0.15, 0)
+creditsLabel.Position = UDim2.new(0, 0, 0.85, 0)
+creditsLabel.Text = "credits:oxyhii"
+creditsLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Желтый цвет
+creditsLabel.Font = Enum.Font.Code
+creditsLabel.TextSize = 12
+creditsLabel.BackgroundTransparency = 1
+creditsLabel.TextXAlignment = Enum.TextXAlignment.Right
+creditsLabel.Parent = mainFrame
+
+-- Настройка градиента для эффекта сияния
+local gradient = Instance.new("UIGradient")
+gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 0)),    -- Желтый
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)), -- Белый (сам блик)
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 0))     -- Желтый
+})
+gradient.Rotation = 45
+gradient.Offset = Vector2.new(-1, 0)
+gradient.Parent = creditsLabel
+
+-- Запуск анимации блеска в отдельном потоке
+task.spawn(function()
+    while true do
+        task.wait(2) -- Пауза между бликами
+        gradient.Offset = Vector2.new(-1, 0)
+        local tween = TweenService:Create(gradient, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Offset = Vector2.new(1, 0)})
+        tween:Play()
+        tween.Completed:Wait()
+    end
+end)
+
+-- === ЛОГИКА ФАРМА ===
+local function farm()
+    while _G.AutoFarm do
+        local char = player.Character or player.CharacterAdded:Wait()
+        local hum = char:WaitForChild("Humanoid")
+        local hrp = char:WaitForChild("HumanoidRootPart")
+
+        statusLabel.Text = "Status: Walking to Portal..."
+        
+        local isTeleported = false
+        local lastPos = hrp.Position 
+        
+        -- Цикл ходьбы к порталу
+        while _G.AutoFarm and not isTeleported do
+            hum:MoveTo(portalPos)
+            task.wait(0.1)
+            
+            -- Проверка на смерть/пропажу перса
+            if not char or not char:FindFirstChild("HumanoidRootPart") or hum.Health <= 0 then
+                break
+            end
+            
+            local currentPos = hrp.Position
+            -- Вычисляем, на какое расстояние переместился игрок за эти 0.1 сек
+            local moveDist = (currentPos - lastPos).Magnitude
+            
+            -- Если за 0.1 сек расстояние изменилось больше чем на 30 - это ТЕЛЕПОРТ
+            if moveDist > 30 then
+                isTeleported = true
+                -- Принудительно заставляем персонажа остановиться
+                hum:MoveTo(currentPos) 
+                break
+            end
+            
+            lastPos = currentPos 
+            
+            -- Прыгаем, если застряли
+            if hrp.Velocity.Magnitude < 1 then hum.Jump = true end
+        end
+
+        -- Если скрипт выключили во время бега - выходим
+        if not _G.AutoFarm then break end
+
+        -- Если цикл прервался из-за телепорта:
+        if isTeleported then
+            statusLabel.Text = "Status: Teleported! Using E..."
+            task.wait(0.5) 
+            
+            -- Жмем E
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            task.wait(0.1)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+
+            task.wait(0.5) 
+
+            -- Ресет
+            statusLabel.Text = "Status: Resetting..."
+            if char:FindFirstChild("Head") then
+                char:BreakJoints()
+            end
+        end
+
+        -- Ждем нового перса
+        player.CharacterAdded:Wait()
+        task.wait(1.5) 
+    end
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+    _G.AutoFarm = not _G.AutoFarm
+    if _G.AutoFarm then
+        toggleBtn.Text = "STOP FARM"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+        task.spawn(farm)
+    else
+        toggleBtn.Text = "START FARM"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+        statusLabel.Text = "Status: OFF"
+    end
+end)
